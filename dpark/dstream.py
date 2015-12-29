@@ -49,7 +49,7 @@ class DStreamGraph(object):
         self.rememberDuration = None
 
     def start(self, time):
-        self.zeroTime = int(time / self.batchDuration) * self.batchDuration
+        self.zeroTime = int(time // self.batchDuration) * self.batchDuration
         for out in self.outputStreams:
             #out.initialize(time)
             out.remember(self.rememberDuration)
@@ -77,7 +77,7 @@ class DStreamGraph(object):
 
     def generateRDDs(self, time):
         #print 'generateRDDs', self, time
-        return filter(None, [out.generateJob(time) for out in self.outputStreams])
+        return [_f for _f in [out.generateJob(time) for out in self.outputStreams] if _f]
 
     def forgetOldRDDs(self, time):
         for out in self.outputStreams:
@@ -150,7 +150,7 @@ class StreamingContext(object):
         return ds
 
     def textFileStream(self, directory, filter=None, newFilesOnly=True):
-        return self.fileStream(directory, filter, newFilesOnly).map(lambda (k,v):v)
+        return self.fileStream(directory, filter, newFilesOnly).map(lambda k,v:v)
 
     def makeStream(self, rdd):
         return ConstantInputDStream(self, rdd)
@@ -236,7 +236,7 @@ class RecurringTimer(object):
         self.stopped = False
 
     def start(self, start):
-        self.nextTime = (int(start / self.period) + 1) * self.period
+        self.nextTime = (int(start // self.period) + 1) * self.period
         self.stopped = False
         self.thread = spawn(self.run)
         logger.debug("RecurringTimer started, nextTime is %d", self.nextTime)
@@ -383,14 +383,14 @@ class DStream(object):
 
     def forgetOldRDDs(self, time):
         oldest = time - (self.rememberDuration or 0)
-        for k in self.generatedRDDs.keys():
+        for k in list(self.generatedRDDs.keys()):
             if k < oldest:
                 self.generatedRDDs.pop(k)
         for dep in self.dependencies:
             dep.forgetOldRDDs(time)
 
     def updateCheckpointData(self, time):
-        newRdds = [(t, rdd.getCheckpointFile) for t, rdd in self.generatedRDDs.items()
+        newRdds = [(t, rdd.getCheckpointFile) for t, rdd in list(self.generatedRDDs.items())
                     if rdd.getCheckpointFile]
         oldRdds = self.checkpointData
         if newRdds:
@@ -444,7 +444,7 @@ class DStream(object):
         return MapPartitionedDStream(self, func, preserve)
 
     def reduce(self, func):
-        return self.map(lambda x:(None, x)).reduceByKey(func, 1).map(lambda (x,y):y)
+        return self.map(lambda x:(None, x)).reduceByKey(func, 1).map(lambda x_y:x_y[1])
 
     def count(self):
         return self.map(lambda x:1).reduce(lambda x,y:x+y)
@@ -460,14 +460,14 @@ class DStream(object):
     def show(self):
         def forFunc(rdd, t):
             some = rdd.take(11)
-            print "-" * 80
-            print "Time:", time.asctime(time.localtime(t))
-            print "-" * 80
+            print("-" * 80)
+            print("Time:", time.asctime(time.localtime(t)))
+            print("-" * 80)
             for i in some[:10]:
-                print i
+                print(i)
             if len(some) > 10:
-                print '...'
-            print
+                print('...')
+            print()
         return self.foreach(forFunc)
 
     def window(self, duration, slideDuration=None):
@@ -481,7 +481,7 @@ class DStream(object):
     def reduceByWindow(self, func, window, slideDuration=None, invFunc=None):
         if invFunc is not None:
             return self.map(lambda x:(1, x)).reduceByKeyAndWindow(func, invFunc,
-                window, slideDuration, 1).map(lambda (x,y): y)
+                window, slideDuration, 1).map(lambda x_y: x_y[1])
         return self.window(window, slideDuration).reduce(func)
 
     def countByWindow(self, windowDuration, slideDuration=None):
@@ -511,7 +511,7 @@ class DStream(object):
         return ShuffledDStream(self, agg, partitioner)
 
     def countByKey(self, numPartitions=None):
-        return self.map(lambda (k,_):(k, 1)).reduceByKey(lambda x,y:x+y, numPartitions)
+        return self.map(lambda k__:(k__[0], 1)).reduceByKey(lambda x,y:x+y, numPartitions)
 
     def groupByKeyAndWindow(self, window, slideDuration=None, numPartitions=None):
         return self.window(window, slideDuration).groupByKey(numPartitions)
@@ -526,7 +526,7 @@ class DStream(object):
         return ReducedWindowedDStream(self, func, invFunc, windowDuration, slideDuration, partitioner)
 
     def countByKeyAndWindow(self, windowDuration, slideDuration=None, numPartitions=None):
-        return self.map(lambda (k,_):(k, 1)).reduceByKeyAndWindow(
+        return self.map(lambda k__:(k__[0], 1)).reduceByKeyAndWindow(
                 lambda x,y:x+y, lambda x,y:x-y, windowDuration, slideDuration, numPartitions)
 
     def updateStateByKey(self, func, partitioner=None, remember=True):
@@ -551,7 +551,7 @@ class DStream(object):
         return CoGroupedDStream([self, other], partitioner)
 
     def join(self, other, partitioner=None):
-        return self.cogroup(other, partitioner).flatMapValues(lambda (x,y): itertools.product(x,y))
+        return self.cogroup(other, partitioner).flatMapValues(lambda x_y: itertools.product(x_y[0],x_y[1]))
 
 
 
@@ -634,7 +634,7 @@ class StateDStream(DerivedDStream):
         if prevRDD:
             if parentRDD:
                 cogroupedRDD = parentRDD.cogroup(prevRDD)
-                return cogroupedRDD.mapValue(lambda (vs, rs):(vs, rs and rs[0] or None)).mapPartitions(updateFuncLocal) # preserve TODO
+                return cogroupedRDD.mapValue(lambda vs_rs:(vs_rs[0], vs_rs[1] and vs_rs[1][0] or None)).mapPartitions(updateFuncLocal) # preserve TODO
             else:
                 return prevRDD.mapValue(lambda rs: ([], rs and rs[0] or None)).mapPartitions(updateFuncLocal)
         else:
@@ -650,7 +650,7 @@ class UnionDStream(DStream):
         self.slideDuration = parents[0].slideDuration
 
     def compute(self, t):
-        rdds = filter(None, [p.getOrCompute(t) for p in self.parents])
+        rdds = [_f for _f in [p.getOrCompute(t) for p in self.parents] if _f]
         if rdds:
             return self.ssc.sc.union(rdds)
 
@@ -684,7 +684,7 @@ class CoGroupedDStream(DStream):
         self.slideDuration = parents[0].slideDuration
 
     def compute(self, t):
-        rdds = filter(None, [p.getOrCompute(t) for p in self.parents])
+        rdds = [_f for _f in [p.getOrCompute(t) for p in self.parents] if _f]
         if rdds:
             return CoGroupedRDD(rdds, self.partitioner)
 

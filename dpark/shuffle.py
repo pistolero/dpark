@@ -5,9 +5,11 @@ import logging
 import marshal
 import struct
 import time
-import cPickle
+import six
+from six.moves import cPickle, xrange
 import gzip
-import Queue
+from six.moves import queue as Queue
+from six.moves.urllib.request import urlopen
 import heapq
 import platform
 
@@ -64,17 +66,17 @@ class ShuffleFetcher:
 
 class SimpleShuffleFetcher(ShuffleFetcher):
     def fetch_one(self, uri, shuffleId, part, reduceId):
-        if uri == LocalFileShuffle.getServerUri():
-            # urllib can open local file
-            url = LocalFileShuffle.getOutputFile(shuffleId, part, reduceId)
-        else:
-            url = "%s/%d/%d/%d" % (uri, shuffleId, part, reduceId)
+#        if uri == LocalFileShuffle.getServerUri():
+#            # urllib can open local file
+#            url = LocalFileShuffle.getOutputFile(shuffleId, part, reduceId)
+#        else:
+        url = "%s/%d/%d/%d" % (uri, shuffleId, part, reduceId)
         logger.debug("fetch %s", url)
 
         tries = 2
         while True:
             try:
-                f = urllib.urlopen(url)
+                f = urlopen(url)
                 if f.code == 404:
                     f.close()
                     raise IOError("not found")
@@ -86,14 +88,14 @@ class SimpleShuffleFetcher(ShuffleFetcher):
                     raise ValueError("length not match: expected %d, but got %d" % (length, len(d)))
                 d = decompress(d[5:])
                 f.close()
-                if flag == 'm':
+                if flag == b'm':
                     d = marshal.loads(d)
-                elif flag == 'p':
+                elif flag == b'p':
                     d = cPickle.loads(d)
                 else:
                     raise ValueError("invalid flag")
                 return d
-            except Exception, e:
+            except Exception as e:
                 logger.debug("Fetch failed for shuffle %d, reduce %d, %d, %s, %s, try again",
                         shuffleId, reduceId, part, url, e)
                 tries -= 1
@@ -135,7 +137,7 @@ class ParallelShuffleFetcher(SimpleShuffleFetcher):
             try:
                 d = self.fetch_one(*r)
                 self.results.put((shuffleId, reduceId, part, d))
-            except FetchFailed, e:
+            except FetchFailed as e:
                 self.results.put(e)
 
     def fetch(self, shuffleId, reduceId, func):
@@ -144,7 +146,7 @@ class ParallelShuffleFetcher(SimpleShuffleFetcher):
         if not serverUris:
             return
 
-        parts = zip(range(len(serverUris)), serverUris)
+        parts = list(zip(range(len(serverUris)), serverUris))
         random.shuffle(parts)
         for part, uri in parts:
             self.requests.put((uri, shuffleId, part, reduceId))
@@ -158,7 +160,7 @@ class ParallelShuffleFetcher(SimpleShuffleFetcher):
                 raise r
 
             sid, rid, part, d = r
-            func(d.iteritems())
+            func(six.iteritems(d))
 
     def stop(self):
         logger.debug("stop parallel shuffle fetcher ...")
@@ -186,7 +188,7 @@ class Merger(object):
             combined[k] = mergeCombiner(o, v) if o is not None else v
 
     def __iter__(self):
-        return self.combined.iteritems()
+        return six.iteritems(self.combined)
 
 class CoGroupMerger(object):
     def __init__(self, size):
@@ -205,7 +207,7 @@ class CoGroupMerger(object):
             self.get_seq(k)[i].extend(v)
 
     def __iter__(self):
-        return self.combined.iteritems()
+        return six.iteritems(self.combined)
 
 def heap_merged(items_lists, combiner):
     heap = []
@@ -256,7 +258,7 @@ class sorted_items(object):
                 f.write(struct.pack("I", len(s)))
                 f.write(s)
             self.loads = marshal.loads
-        except Exception, e:
+        except Exception as e:
             f.rewind()
             for i in items:
                 s = cPickle.dumps(i)
@@ -273,7 +275,7 @@ class sorted_items(object):
         self.c = 0
         return self
 
-    def next(self):
+    def __next__(self):
         f = self.f
         b = f.read(4)
         if not b:
@@ -313,7 +315,7 @@ class DiskMerger(Merger):
         self.merged += 1
         #print 'used', self.merged, self.total, self.get_used_memory() - self.base_memory, self.base_memory
         if self.max_merge is None:
-            if self.merged < self.total/5 and self.get_used_memory() - self.base_memory > MAX_SHUFFLE_MEMORY:
+            if self.merged < self.total//5 and self.get_used_memory() - self.base_memory > MAX_SHUFFLE_MEMORY:
                 self.max_merge = self.merged
 
         if self.max_merge is not None and self.merged >= self.max_merge:
@@ -328,7 +330,7 @@ class DiskMerger(Merger):
 
     def __iter__(self):
         if not self.archives:
-            return self.combined.iteritems()
+            return six.iteritems(self.combined)
 
         if self.combined:
             self.rotate()
@@ -360,11 +362,11 @@ class MapOutputTracker(BaseMapOutputTracker):
 def test():
     l = []
     for i in range(10):
-        d = zip(range(10000), range(10000))
+        d = list(zip(range(10000), range(10000)))
         l.append(sorted_items(d))
     hl = heap_merged(l, lambda x,y:x+y)
     for i in range(10):
-        print i, hl.next()
+        print(i, next(hl))
 
     import logging
     logging.basicConfig(level=logging.INFO)

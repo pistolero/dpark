@@ -8,13 +8,15 @@ import msgpack
 
 from dpark.rdd import DerivedRDD, OutputTableFileRDD
 from dpark.dependency import Aggregator, OneToOneDependency
+from functools import reduce
+from six.moves import map as imap
 
 try:
     from pyhll import HyperLogLog
 except ImportError:
     from dpark.hyperloglog import HyperLogLog
 
-from hotcounter import HotCounter
+from .hotcounter import HotCounter
 
 SimpleAggs = {
     'sum': lambda x,y: x+y,
@@ -28,7 +30,7 @@ FullAggs = {
             lambda v:(v, 1),
             lambda (s,c), v: (s+v, c+1),
             lambda (s1,c1), (s2,c2):(s1+s2, c1+c2),
-            lambda (s,c): float(s)/c,
+            lambda (s,c): float(s)//c,
          ),
         'count': (
             lambda v: 1 if v is not None else 0,
@@ -80,7 +82,8 @@ def table_join(f):
 
         ln = [n for n in self.fields if n not in left_keys]
         rn = [n for n in other.fields if n not in right_keys]
-        def conv((k, (v1, v2))):
+        def conv(x):
+            (k, (v1, v2)) = x
             return list(k) + (v1 or [None]*len(ln)) + (v2 or [None]*len(rn))
         return joined.map(conv).asTable(left_keys + ln + rn, self.name)
 
@@ -100,7 +103,7 @@ class TableRDD(DerivedRDD):
 
     def iterator(self, split):
         cls = namedtuple(self.name or ('Row%d' % self.id), self.fields)
-        return itertools.imap(lambda x:cls(*x), super(TableRDD, self).iterator(split))
+        return imap(lambda x:cls(*x), super(TableRDD, self).iterator(split))
 
     def compute(self, split):
         return self.prev.iterator(split)
@@ -143,7 +146,7 @@ class TableRDD(DerivedRDD):
     def select(self, *fields, **named_fields):
         if len(fields) == 1 and not named_fields and fields[0] == '*':
             fields = self.fields
-        new_fields = [self._create_field_name(e) for e in fields] + named_fields.keys()
+        new_fields = [self._create_field_name(e) for e in fields] + list(named_fields.keys())
         if len(set(new_fields)) != len(new_fields):
             raise Exception("dupicated fields: " + (','.join(new_fields)))
 
@@ -180,7 +183,7 @@ class TableRDD(DerivedRDD):
                     '_x[%d] + _y[%d]' % (index, index), ag)
 
     def selectOne(self, *fields, **named_fields):
-        new_fields = [self._create_field_name(e) for e in fields] + named_fields.keys()
+        new_fields = [self._create_field_name(e) for e in fields] + list(named_fields.keys())
         if len(set(new_fields)) != len(new_fields):
             raise Exception("dupicated fields: " + (','.join(new_fields)))
 
@@ -223,7 +226,7 @@ class TableRDD(DerivedRDD):
         expr = ','.join(self._create_expression(e) for e in keys)
         gen_key = eval('lambda _v:(%s,)' % expr)
 
-        values = [self._create_field_name(e) for e in fields] + kw.keys()
+        values = [self._create_field_name(e) for e in fields] + list(kw.keys())
         kw.update((values[i], fields[i]) for i in range(len(fields)))
         codes = [self._create_reducer(i, kw[n]) for i,n in enumerate(values)]
         creater = eval('lambda _v:(%s,)' % (','.join(c[0] for c in codes)))
@@ -233,7 +236,7 @@ class TableRDD(DerivedRDD):
 
         agg = Aggregator(creater, merger, combiner)
         g = self.prev.map(lambda v:(gen_key(v), v)).combineByKey(agg, numSplits)
-        return g.map(lambda (k,v): k + mapper(v)).asTable(key_names + values, self.name)
+        return g.map(lambda k_v1: k_v1[0] + mapper(k_v1[1])).asTable(key_names + values, self.name)
 
     def indexBy(self, keys=None):
         if keys is None:
@@ -264,7 +267,7 @@ class TableRDD(DerivedRDD):
     @table_join
     def leftOuterJoin(self, other, left_keys=None, right_keys=None):
         o = other.indexBy(right_keys).collectAsMap()
-        r = self.indexBy(left_keys).map(lambda (k,v):(k,(v,o.get(k))))
+        r = self.indexBy(left_keys).map(lambda k_v:(k_v[0],(k_v[1],o.get(k_v[0]))))
         r.mem += (sys.getsizeof(o) * 10) >> 20 # memory used by broadcast obj
         return r
 

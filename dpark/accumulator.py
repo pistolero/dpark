@@ -64,19 +64,19 @@ class Accumulator:
 
     @classmethod
     def clear(cls):
-        for acc in cls.localAccums.values():
+        for acc in list(cls.localAccums.values()):
             acc.reset()
         cls.localAccums.clear()
 
     @classmethod
     def values(cls):
-        v = dict((id, accum.value) for id,accum in cls.localAccums.items())
+        v = dict((id, accum.value) for id,accum in list(cls.localAccums.items()))
         cls.clear()
         return v
 
     @classmethod
     def merge(cls, values):
-        for id, value in values.items():
+        for id, value in list(values.items()):
             cls.originals[id].add(value)
 
 ReadBytes = Accumulator()

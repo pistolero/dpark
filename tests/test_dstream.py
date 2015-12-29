@@ -15,7 +15,7 @@ class TestInputStream(InputDStream):
 
     def compute(self, t):
         self.index += 1
-        index = (t - self.zeroTime) / self.slideDuration - 1
+        index = (t - self.zeroTime) // self.slideDuration - 1
         if 0 <= index < len(self.input):
             d = self.input[index]
             return self.ssc.sc.makeRDD(d, self.numPart)

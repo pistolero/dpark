@@ -4,6 +4,8 @@ import logging
 import socket
 from operator import itemgetter
 
+from six.moves import xrange
+
 logger = logging.getLogger(__name__)
 
 TASK_STARTING = 0
@@ -90,7 +92,7 @@ class SimpleJob(Job):
     def taskEverageTime(self):
         if not self.tasksFinished:
             return 10
-        return max(self.total_used / self.tasksFinished, 5)
+        return max(self.total_used // self.tasksFinished, 5)
 
     def addPendingTask(self, i):
         loc = self.tasks[i].preferredLocations()
@@ -119,7 +121,7 @@ class SimpleJob(Job):
         st = {}
         for t in tasks:
             st[t] = st.get(t, 0) + 1
-        ts = sorted(st.items(), key=itemgetter(1), reverse=True)
+        ts = sorted(list(st.items()), key=itemgetter(1), reverse=True)
         return [t for t,_ in ts ]
 
     def findTaskFromList(self, l, host, cpus, mem):
@@ -217,7 +219,7 @@ class SimpleJob(Job):
             tried = [t.tried for t in self.tasks]
             logger.info("Job %d finished in %.1fs: min=%.1fs, avg=%.1fs, max=%.1fs, maxtry=%d",
                 self.id, time.time()-self.start,
-                min(ts), sum(ts)/len(ts), max(ts), max(tried))
+                min(ts), sum(ts)//len(ts), max(ts), max(tried))
             from dpark.accumulator import LocalReadBytes, RemoteReadBytes
             lb, rb = LocalReadBytes.reset(), RemoteReadBytes.reset()
             if rb > 0:
@@ -278,8 +280,8 @@ class SimpleJob(Job):
         self.launched[index] = False
         if self.tasksLaunched == self.numTasks:
             self.sched.requestMoreResources()
-	    for i in xrange(len(self.blacklist)):
-	    	self.blacklist[i] = []
+            for i in xrange(len(self.blacklist)):
+                self.blacklist[i] = []
         self.tasksLaunched -= 1
 
     def check_task_timeout(self):

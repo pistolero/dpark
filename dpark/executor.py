@@ -60,13 +60,13 @@ def run_task(task_data):
         task, ntry = cPickle.loads(decompress(task_data))
         Accumulator.clear()
         result = task.run(ntry)
-        accUpdate = Accumulator.values()
+        accUpdate = list(Accumulator.values())
         MutableDict.flush()
 
         if marshalable(result):
             try:
                 flag, data = 0, marshal.dumps(result)
-            except Exception, e:
+            except Exception as e:
                 flag, data = 1, cPickle.dumps(result, -1)
 
         else:
@@ -82,7 +82,7 @@ def run_task(task_data):
             flag += 2
 
         return mesos_pb2.TASK_FINISHED, cPickle.dumps((Success(), (flag, data), accUpdate), -1)
-    except FetchFailed, e:
+    except FetchFailed as e:
         return mesos_pb2.TASK_FAILED, cPickle.dumps((e, None, None), -1)
     except :
         import traceback
@@ -193,7 +193,7 @@ def setup_cleaner_process(workdir):
             try:
                 psutil.Process(ppid).wait()
                 os.killpg(ppid, signal.SIGKILL) # kill workers
-            except Exception, e:
+            except Exception as e:
                 pass # make sure to exit
             finally:
                 for d in workdir:
@@ -233,13 +233,13 @@ class MyExecutor(Executor):
         while True:
             self.lock.acquire()
 
-            for tid, (task, pool) in self.busy_workers.items():
+            for tid, (task, pool) in list(self.busy_workers.items()):
                 task_id = task.task_id
                 try:
                     pid = pool._pool[0].pid
                     p = psutil.Process(pid)
                     rss = p.get_memory_info()[0] >> 20
-                except Exception, e:
+                except Exception as e:
                     logger.error("worker process %d of task %s is dead: %s", pid, tid, e)
                     reply_status(driver, task_id, mesos_pb2.TASK_LOST)
                     self.busy_workers.pop(tid)
@@ -263,7 +263,7 @@ class MyExecutor(Executor):
                 elif rss > offered * mem_limit.get(tid, 1.0):
                     logger.debug("task %s used too much memory: %dMB > %dMB, "
                             + "use -M to request or taskMemory for more memory", tid, rss, offered)
-                    mem_limit[tid] = rss / offered + 0.1
+                    mem_limit[tid] = rss // offered + 0.1
 
             now = time.time()
             n = len([1 for t, p in self.idle_workers if t + MAX_WORKER_IDLE_TIME < now])
@@ -299,7 +299,7 @@ class MyExecutor(Executor):
             if os.path.exists(cwd):
                 try:
                     os.chdir(cwd)
-                except Exception, e:
+                except Exception as e:
                     logger.warning("change cwd to %s failed: %s", cwd, e)
             else:
                 logger.warning("cwd (%s) not exists", cwd)
@@ -308,7 +308,7 @@ class MyExecutor(Executor):
             root = os.path.dirname(self.workdir[0])
             if not os.path.exists(root):
                 os.mkdir(root)
-                os.chmod(root, 0777) # because umask
+                os.chmod(root, 0o777) # because umask
             args['SERVER_URI'] = startWebServer(self.workdir[0])
             if 'MESOS_SLAVE_PID' in os.environ: # make unit test happy
                 setup_cleaner_process(self.workdir)
@@ -317,7 +317,7 @@ class MyExecutor(Executor):
 
             logger.debug("executor started at %s", slaveInfo.hostname)
 
-        except Exception, e:
+        except Exception as e:
             import traceback
             msg = traceback.format_exc()
             logger.error("init executor failed: %s", msg)
@@ -337,7 +337,8 @@ class MyExecutor(Executor):
         reply_status(driver, task_id, mesos_pb2.TASK_RUNNING)
         logger.debug("launch task %s", task.task_id.value)
         try:
-            def callback((state, data)):
+            def callback(x):
+                (state, data) = x
                 reply_status(driver, task_id, state, data)
                 with self.lock:
                     _, pool = self.busy_workers.pop(task.task_id.value)
@@ -348,7 +349,7 @@ class MyExecutor(Executor):
             self.busy_workers[task.task_id.value] = (task, pool)
             pool.apply_async(run_task, [task.data], callback=callback)
 
-        except Exception, e:
+        except Exception as e:
             import traceback
             msg = traceback.format_exc()
             reply_status(driver, task_id, mesos_pb2.TASK_LOST, msg)
@@ -366,11 +367,11 @@ class MyExecutor(Executor):
             try:
                 for pi in p._pool:
                     os.kill(pi.pid, signal.SIGKILL)
-            except Exception, e:
+            except Exception as e:
                 pass
         for _, p in self.idle_workers:
             terminate(p)
-        for _, p in self.busy_workers.itervalues():
+        for _, p in self.busy_workers.values():
             terminate(p)
 
         # clean work files

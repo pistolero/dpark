@@ -9,7 +9,7 @@ MAIN = sys.modules['__main__']
 @contextmanager
 def main_environ(exec_str):
     org = MAIN.__dict__.copy()
-    exec exec_str in MAIN.__dict__
+    exec(exec_str, MAIN.__dict__)
     yield
     for k in MAIN.__dict__.keys():
         if k not in org:
@@ -20,7 +20,7 @@ class TestSerialize(unittest.TestCase):
 
     def testNameError(self):
         def foo():
-            print x
+            print(x)
 
         dumped_func = dump_closure(foo)
         func = load_closure(dumped_func)

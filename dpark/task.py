@@ -1,7 +1,7 @@
 import os,os.path
 import socket
 import marshal
-import cPickle
+from six.moves import cPickle
 import logging
 import struct
 
@@ -89,11 +89,11 @@ class ShuffleMapTask(DAGTask):
         for i, bucket in self.rdd._prepare_shuffle(self.split, self.partitioner, self.aggregator):
             try:
                 if marshalable(bucket):
-                    flag, d = 'm', marshal.dumps(bucket)
+                    flag, d = b'm', marshal.dumps(bucket)
                 else:
-                    flag, d = 'p', cPickle.dumps(bucket, -1)
+                    flag, d = b'p', cPickle.dumps(bucket, -1)
             except ValueError:
-                flag, d = 'p', cPickle.dumps(bucket, -1)
+                flag, d = b'p', cPickle.dumps(bucket, -1)
             cd = compress(d)
             for tried in range(1, 4):
                 try:
@@ -105,7 +105,7 @@ class ShuffleMapTask(DAGTask):
                     f.close()
                     os.rename(tpath, path)
                     break
-                except IOError, e:
+                except IOError as e:
                     logger.warning("write %s failed: %s, try again (%d)", path, e, tried)
                     try: os.remove(tpath)
                     except OSError: pass

@@ -6,7 +6,8 @@ import binascii
 import random
 import socket
 import struct
-import cPickle
+import six
+from six.moves import cPickle
 import logging
 import marshal
 
@@ -235,7 +236,7 @@ class P2PBroadcastManager(BroadcastManager):
 
             sock.close()
             logger.debug("Sending stop notification to all servers ...")
-            for uuid, sources in self.guides.iteritems():
+            for uuid, sources in six.iteritems(self.guides):
                 for addr in sources:
                     self.stop_server(addr)
 
@@ -271,7 +272,7 @@ class P2PBroadcastManager(BroadcastManager):
 
             sock.close()
             logger.debug("stop Broadcast server %s", server_addr)
-            for uuid in self.published.keys():
+            for uuid in list(self.published.keys()):
                 self.clear(uuid)
 
         return server_addr, spawn(run)

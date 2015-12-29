@@ -1,13 +1,13 @@
 import os
 import socket
 import threading
-import Queue
+from six.moves import queue as Queue
 import time
 import struct
 import logging
 
-from consts import *
-from utils import *
+from .consts import *
+from .utils import *
 
 logger = logging.getLogger(__name__)
 
@@ -352,19 +352,19 @@ def test():
     m.close()
     # print m.get_attr(1)
     while True:
-        print m.getdir(1)
-        print m.getdirplus(1)
+        print(m.getdir(1))
+        print(m.getdirplus(1))
         time.sleep(60)
     info, err = m.lookup(1, "test.csv")
-    print info, err
+    print(info, err)
     # print m.opencheck(info.inode)
     chunks = m.readchunk(info.inode, 0)
-    print chunks, chunks.addrs
+    print(chunks, chunks.addrs)
 
     for i in range(1000):
         info, err = m.lookup(1, "test.csv")
         chunks = m.readchunk(info.inode, 0)
-        print i, err, chunks
+        print(i, err, chunks)
         time.sleep(10)
 
     m.close()

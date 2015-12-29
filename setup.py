@@ -2,9 +2,9 @@ import sys
 from setuptools import setup, Extension
 
 # setuptools DWIM monkey-patch madness: http://dou.bz/37m3XL
-if 'setuptools.extension' in sys.modules:
-    m = sys.modules['setuptools.extension']
-    m.Extension.__dict__ = m._Extension.__dict__
+#if 'setuptools.extension' in sys.modules:
+#    m = sys.modules['setuptools.extension']
+#    m.Extension.__dict__ = m._Extension.__dict__
 
 
 ext_modules = [Extension('dpark.portable_hash', ['dpark/portable_hash.pyx'])]

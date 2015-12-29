@@ -2,11 +2,12 @@ import os, sys
 import socket
 import logging
 import marshal
-import cPickle
-import threading, Queue
+from six.moves import cPickle
+from six.moves import queue as Queue
+from six.moves import urllib
+import threading
 import time
 import random
-import urllib
 import weakref
 import multiprocessing
 
@@ -32,7 +33,7 @@ POLL_TIMEOUT = 0.1
 RESUBMIT_TIMEOUT = 60
 MAX_IDLE_TIME = 60 * 30
 
-class TaskEndReason: pass
+class TaskEndReason(Exception): pass
 class Success(TaskEndReason): pass
 class FetchFailed(TaskEndReason):
     def __init__(self, serverUri, shuffleId, mapId, reduceId):
@@ -350,10 +351,10 @@ def run_task(task, aid):
     try:
         Accumulator.clear()
         result = task.run(aid)
-        accumUpdates = Accumulator.values()
+        accumUpdates = list(Accumulator.values())
         MutableDict.flush()
         return (task.id, Success(), result, accumUpdates)
-    except Exception, e:
+    except Exception as e:
         logger.error("error in task %s", task)
         import traceback
         traceback.print_exc()
@@ -774,7 +775,7 @@ class MesosScheduler(DAGScheduler):
             return
 
         job = self.activeJobs[jid]
-        _, task_id, tried = map(int, tid.split(':'))
+        _, task_id, tried = list(map(int, tid.split(':')))
         if state == mesos_pb2.TASK_RUNNING:
             return job.statusUpdate(task_id, tried, state)
 
@@ -792,17 +793,17 @@ class MesosScheduler(DAGScheduler):
                     flag, data = result
                     if flag >= 2:
                         try:
-                            data = urllib.urlopen(data).read()
+                            data = urllib.request(data).read()
                         except IOError:
                             # try again
-                            data = urllib.urlopen(data).read()
+                            data = urllib.request(data).read()
                         flag -= 2
                     data = decompress(data)
                     if flag == 0:
                         result = marshal.loads(data)
                     else:
                         result = cPickle.loads(data)
-            except Exception, e:
+            except Exception as e:
                 logger.warning("error when cPickle.loads(): %s, data:%s", e, len(status.data))
                 state = mesos_pb2.TASK_FAILED
                 return job.statusUpdate(task_id, tried, mesos_pb2.TASK_FAILED, 'load failed: %s' % e)
@@ -832,7 +833,7 @@ class MesosScheduler(DAGScheduler):
 
     @safe
     def check(self):
-        for job in self.activeJobs.values():
+        for job in list(self.activeJobs.values()):
             if job.check_task_timeout():
                 self.requestMoreResources()
 

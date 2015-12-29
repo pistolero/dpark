@@ -1,27 +1,50 @@
 import sys
 import types
-from cStringIO import StringIO
+
+import six
+from six import BytesIO as StringIO
 import marshal
-import new
-import cPickle
+import types
+from six.moves import cPickle
+from six.moves import range as xrange
 import itertools
 from pickle import Pickler, whichmodule
 import logging
 logger = logging.getLogger(__name__)
 
 
-class MyPickler(Pickler):
-    dispatch = Pickler.dispatch.copy()
+if sys.version < '3':
+    class MyPickler(Pickler):
+        dispatch = Pickler.dispatch.copy()
+ 
+        @classmethod
+        def register(cls, type, reduce):
+            def dispatcher(self, obj):
+                rv = reduce(obj)
+                if isinstance(rv, str):
+                    self.save_global(obj, rv)
+                else:
+                    self.save_reduce(obj=obj, *rv)
+            cls.dispatch[type] = dispatcher
+    PY3 = False
+else:
+    long = int
+    import copyreg
 
-    @classmethod
-    def register(cls, type, reduce):
-        def dispatcher(self, obj):
-            rv = reduce(obj)
-            if isinstance(rv, str):
-                self.save_global(obj, rv)
-            else:
-                self.save_reduce(obj=obj, *rv)
-        cls.dispatch[type] = dispatcher
+    import pickle
+    class MyPickler(pickle._Pickler):
+        dispatch = pickle._Pickler.dispatch.copy()
+ 
+        @classmethod
+        def register(cls, type, reduce):
+            def dispatcher(self, obj):
+                rv = reduce(obj)
+                if isinstance(rv, str):
+                    self.save_global(obj, rv)
+                else:
+                    self.save_reduce(obj=obj, *rv)
+            cls.dispatch[type] = dispatcher
+    PY3 = True
 
 
 def dumps(o):
@@ -64,7 +87,7 @@ def marshalable(o):
     if o is None:
         return True
     t = type(o)
-    if t in (str, unicode, bool, int, long, float, complex):
+    if t in (six.binary_type, six.text_type, bool, int, long, float, complex):
         return True
     if t in (tuple, list, set):
         for i in itertools.islice(o, 100):
@@ -72,7 +95,7 @@ def marshalable(o):
                 return False
         return True
     if t == dict:
-        for k, v in itertools.islice(o.iteritems(), 100):
+        for k, v in itertools.islice(six.iteritems(o), 100):
             if not marshalable(k) or not marshalable(v):
                 return False
         return True
@@ -118,24 +141,24 @@ def get_co_names(code):
 
 def dump_closure(f, skip=set()):
     def _do_dump(f):
-        for i, c in enumerate(f.func_closure):
+        for i, c in enumerate(f.__closure__):
             if hasattr(c, 'cell_contents'):
                 yield dump_obj(f, 'cell%d' % i, c.cell_contents)
             else:
                 yield None
 
-    code = f.func_code
+    code = f.__code__
     glob = {}
     for n in get_co_names(code):
-        r = f.func_globals.get(n)
+        r = f.__globals__.get(n)
         if r is not None and n not in skip:
             glob[n] = dump_obj(f, n, r)
 
     closure = None
-    if f.func_closure:
+    if f.__closure__:
         closure = tuple(_do_dump(f))
     return marshal.dumps(
-        (code, glob, f.func_name, f.func_defaults, closure, f.__module__))
+        (code, glob, f.__name__, f.__defaults__, closure, f.__module__))
 
 
 def load_closure(bytes):
@@ -143,24 +166,24 @@ def load_closure(bytes):
     glob = dict((k, loads(v)) for k, v in glob.items())
     glob['__builtins__'] = __builtins__
     closure = closure and reconstruct_closure(closure) or None
-    f = new.function(code, glob, name, defaults, closure)
+    f = types.FunctionType(code, glob, name, defaults, closure)
     f.__module__ = mod
     # Replace the recursive function placeholders with this simulated function
     # pointer
     for key, value in glob.items():
         if RECURSIVE_FUNCTION_PLACEHOLDER == value:
-            f.func_globals[key] = f
+            f.__globals__[key] = f
     return f
 
 
 def make_cell(value):
-    return (lambda: value).func_closure[0]
+    return (lambda: value).__closure__[0]
 
 
 def make_empty_cell():
     if False:
         unreachable = None
-    return (lambda: unreachable).func_closure[0]
+    return (lambda: unreachable).__closure__[0]
 
 
 def reconstruct_closure(closure):
@@ -218,17 +241,22 @@ def dump_local_class(cls):
     keys = cls.__dict__.keys()
     for k in keys:
         if k not in internal_fields:
-            v = getattr(cls, k)
+            v = cls.__dict__[k]
             if isinstance(v, property):
                 k = ('property', k)
                 v = (v.fget, v.fset, v.fdel, v.__doc__)
 
-            if isinstance(v, types.FunctionType):
+            elif isinstance(v, staticmethod):
                 k = ('staticmethod', k)
+                v = v.__func__
 
-            if isinstance(v, types.MethodType):
+            elif isinstance(v, classmethod):
+                k = ('classmethod', k)
+                v = v.__func__
+
+            elif isinstance(v, types.FunctionType):
                 k = ('method', k)
-                v = (v.im_self, dump_closure(v.im_func, skip=set(keys)))
+                v = dump_closure(v, skip=set(keys))
 
             if not isinstance(v, types.MemberDescriptorType):
                 external[k] = v
@@ -266,10 +294,14 @@ def load_local_class(bytes):
             if t == 'staticmethod':
                 v = staticmethod(v)
 
+            if t == 'classmethod':
+                v = classmethod(v)
+
             if t == 'method':
-                im_self, _func = v
-                im_func = load_closure(_func)
-                v = types.MethodType(im_func, im_self, cls)
+                v = load_closure(v)
+                # im_self, _func = v
+                # im_func = load_closure(_func)
+                # v = types.MethodType(im_func, im_self)
 
         setattr(cls, k, v)
 
@@ -288,8 +320,8 @@ def reduce_class(obj):
 
 
 def dump_method(method):
-    obj = method.im_self or method.im_class
-    func = method.im_func
+    obj = method.__self__ or method.__class__
+    func = method.__func__
 
     return dumps((obj, func.__name__))
 
@@ -300,19 +332,23 @@ def load_method(bytes):
 
 
 def reduce_method(method):
-    module = method.im_func.__module__
+    #module = method.__func__.__module__
     return load_method, (dump_method(method), )
 
 MyPickler.register(types.LambdaType, reduce_function)
-MyPickler.register(types.ClassType, reduce_class)
-MyPickler.register(types.TypeType, reduce_class)
+if PY3:
+    MyPickler.register(type, reduce_class)
+else:
+    MyPickler.register(types.ClassType, reduce_class)
+    MyPickler.register(types.TypeType, reduce_class)
 MyPickler.register(types.MethodType, reduce_method)
 
 if __name__ == "__main__":
     assert marshalable(None)
     assert marshalable("")
     assert marshalable(u"")
-    assert not marshalable(buffer(""))
+    if not PY3:
+        assert not marshalable(buffer(""))
     assert marshalable(0)
     assert marshalable(0)
     assert marshalable(0.0)
@@ -342,8 +378,8 @@ if __name__ == "__main__":
     f = get_closure(10)
     ff = loads(dumps(f))
     # print globals()
-    print f(2)
-    print ff(2)
+    print(f(2))
+    print(ff(2))
     glob_func = loads(dumps(glob_func))
     get_closure = loads(dumps(get_closure))
 
@@ -417,5 +453,5 @@ if __name__ == "__main__":
     assert _recursive(5) == 0
 
     f = loads(dumps(lambda: (some_global for i in xrange(1))))
-    print list(f())
+    print(list(f()))
     assert list(f()) == [some_global]

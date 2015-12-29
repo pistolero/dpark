@@ -2,6 +2,7 @@ import itertools
 import marshal
 import math
 from dpark.portable_hash import portable_hash
+from functools import reduce
 
 BYTE_SHIFT = 3
 BYTE_SIZE = 1 << BYTE_SHIFT
@@ -15,7 +16,7 @@ class BitIndex(object):
         self.array = bytearray()
         self.size = 0
 
-    def __nonzero__(self):
+    def __bool__(self):
         return any(self.array)
 
     def __repr__(self):

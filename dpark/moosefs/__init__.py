@@ -1,11 +1,12 @@
 import os
 import socket
-from cStringIO import StringIO
+import six
+from six import BytesIO as StringIO
 import logging
 
-from consts import *
-from master import MasterConn
-from cs import read_chunk, read_chunk_from_local
+from .consts import *
+from .master import MasterConn
+from .cs import read_chunk, read_chunk_from_local
 
 MFS_ROOT_INODE = 1
 
@@ -76,7 +77,7 @@ class MooseFS(object):
             root = ds.pop()
             cs = self.listdir(root)
             dirs, files = [], []
-            for name, info in cs.iteritems():
+            for name, info in six.iteritems(cs):
                 if name in '..': continue
                 while followlinks and info and info.type == TYPE_SYMLINK:
                     target = self.readlink(info.inode)
@@ -225,7 +226,7 @@ class ReadableFile(File):
                     offset += len(block)
                     if offset >= length:
                         return
-            except Exception, e:
+            except Exception as e:
                 logger.warning("read chunk %d from local: %s", chunk.id, e)
 
         for host, port in chunk.addrs:
@@ -241,7 +242,7 @@ class ReadableFile(File):
                             return
                         nerror = 0
                     break
-                except IOError, e:
+                except IOError as e:
                     #print 'read chunk error from ', host, port, chunk.id, chunk.version, offset, e
                     nerror += 1
 
@@ -304,7 +305,7 @@ def listdir(path, master='mfsmaster'):
     return get_mfs(master).listdir(path)
 
 def get_mfs_by_path(path):
-    for prefix, master in MFS_PREFIX.iteritems():
+    for prefix, master in six.iteritems(MFS_PREFIX):
         if path.startswith(prefix):
             return get_mfs(master, prefix)
 
@@ -330,7 +331,7 @@ def open_file(path):
     if mfs:
         try:
             return mfs.open(path[len(mfs.mountpoint):])
-        except CrossSystemSymlink, e:
+        except CrossSystemSymlink as e:
             return open_file(e.dst)
 
 def _test():
@@ -339,7 +340,7 @@ def _test():
     d = f.read(1024)
 
     f2 = mfsopen('/test.csv')
-    print 'f2 locs', f2.locs()
+    print ('f2 locs', f2.locs())
     f2.seek(1024)
     d2 = f2.read(1024)
     assert d == d2
@@ -352,9 +353,9 @@ def _test():
 
     #print listdir('/')
     for root, dirs, names in walk('/'):
-        print root, dirs, names
+        print (root, dirs, names)
         for n in names:
-            print n, mfsopen(os.path.join(root, n)).locs()
+            print (n, mfsopen(os.path.join(root, n)).locs())
 
 if __name__ == '__main__':
     _test()

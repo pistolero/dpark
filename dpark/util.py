@@ -56,7 +56,7 @@ def izip(*its):
     its = [iter(it) for it in its]
     try:
         while True:
-            yield tuple([it.next() for it in its])
+            yield tuple([next(it) for it in its])
     except StopIteration:
         pass
 
@@ -77,7 +77,7 @@ def memory_str_to_mb(str):
     else:
         number, unit = float(lower), 'm'
     scale_factors = {
-        'k': 1. / 1024,
+        'k': 1. // 1024,
         'm': 1,
         'g': 1024,
         't': 1024 * 1024,

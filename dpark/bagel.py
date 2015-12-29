@@ -64,7 +64,7 @@ class Bagel(object):
     @classmethod
     def run(cls, ctx, verts, msgs, compute,
             combiner=DefaultValueCombiner, aggregator=None,
-            max_superstep=sys.maxint, numSplits=None, snapshot_dir=None):
+            max_superstep=sys.maxsize, numSplits=None, snapshot_dir=None):
 
         superstep = 0
         snapshot_dir = snapshot_dir or ctx.options.snapshot_dir
@@ -87,14 +87,15 @@ class Bagel(object):
 
     @classmethod
     def agg(cls, verts, aggregator):
-        r = verts.map(lambda (id, vert): aggregator.createAggregator(vert))
+        r = verts.map(lambda id_vert: aggregator.createAggregator(id_vert[1]))
         return r.reduce(aggregator.mergeAggregators)
 
     @classmethod
     def comp(cls, ctx, grouped, compute, snapshot_dir=None):
         numMsgs = ctx.accumulator(0)
         numActiveVerts = ctx.accumulator(0)
-        def proc((vs, cs)):
+        def proc(x):
+            vs, cs = x
             if not vs:
                 return []
             newVert, newMsgs = compute(vs[0], cs)
@@ -103,8 +104,8 @@ class Bagel(object):
                 numActiveVerts.add(1)
             return [(newVert, newMsgs)]
         processed = grouped.flatMapValue(proc)
-        verts = processed.mapValue(lambda (vert, msgs): vert)
-        msgs = processed.flatMap(lambda (id, (vert, msgs)): msgs)
+        verts = processed.mapValue(lambda vert_msgs: vert_msgs[0])
+        msgs = processed.flatMap(lambda id_vert_msgs: id_vert_msgs[1][1])
         if snapshot_dir:
             verts = verts.snapshot(snapshot_dir)
         #else:

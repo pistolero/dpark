@@ -29,7 +29,7 @@ def load_conf(path):
 
     try:
         data = open(path).read()
-        exec data in globals(), globals()
-    except Exception, e:
+        exec(data, globals(), globals())
+    except Exception as e:
         logger.error("error while load conf from %s: %s", path, e)
         raise

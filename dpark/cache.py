@@ -2,7 +2,7 @@ import os
 import multiprocessing
 import logging
 import marshal
-import cPickle
+from six.moves import cPickle, xrange
 import shutil
 import struct
 import urllib
@@ -78,7 +78,7 @@ class DiskCache(Cache):
     def clear(self):
         try:
             shutil.rmtree(self.root)
-        except OSError, e:
+        except OSError as e:
             pass
 
     def load(self, f):
@@ -86,7 +86,7 @@ class DiskCache(Cache):
         if not count: return
         unpacker = msgpack.Unpacker(f, use_list=False)
         for i in xrange(count):
-            _type, data = unpacker.next()
+            _type, data = unpacker.unpack()
             if _type == 0:
                 yield marshal.loads(data)
             else:
@@ -180,7 +180,7 @@ class CacheTracker(BaseCacheTracker):
 
     def getLocationsSnapshot(self):
         result = {}
-        for rdd_id, partitions in self.rdds.items():
+        for rdd_id, partitions in list(self.rdds.items()):
             result[rdd_id] = [self.locs.get('cache:%s-%s' % (rdd_id, index), [])
                     for index in xrange(partitions)]
 
@@ -192,7 +192,7 @@ class CacheTracker(BaseCacheTracker):
                 h = uri.split(':')[1].rsplit('/', 1)[-1]
                 return h
             return ''
-        return map(parse_hostname, self.locs.get('cache:%s-%s' % (rdd_id, index), []))
+        return list(map(parse_hostname, self.locs.get('cache:%s-%s' % (rdd_id, index), [])))
 
     def getCacheUri(self, rdd_id, index):
         return self.client.call(GetValueMessage('cache:%s-%s' % (rdd_id, index)))
@@ -229,13 +229,13 @@ def test():
     from dpark.context import DparkContext
     dc = DparkContext("local")
     dc.start()
-    nums = dc.parallelize(range(100), 10)
+    nums = dc.parallelize(list(range(100)), 10)
     tracker = CacheTracker(True)
     tracker.registerRDD(nums.id, len(nums))
     split = nums.splits[0]
-    print list(tracker.getOrCompute(nums, split))
-    print list(tracker.getOrCompute(nums, split))
-    print tracker.getLocationsSnapshot()
+    print(list(tracker.getOrCompute(nums, split)))
+    print(list(tracker.getOrCompute(nums, split)))
+    print(tracker.getLocationsSnapshot())
     tracker.stop()
 
 if __name__ == '__main__':

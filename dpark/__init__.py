@@ -1,5 +1,5 @@
-from context import DparkContext, parser as optParser
-from bagel import Bagel
+from .context import DparkContext, parser as optParser
+from .bagel import Bagel
 from .decorator import jit
 
 _ctx = DparkContext()

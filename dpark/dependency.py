@@ -26,8 +26,8 @@ class OneToRangeDependency(NarrowDependency):
         self.length = length
 
     def getParents(self, pid):
-        return range(pid * self.splitSize,
-                min((pid+1) * self.splitSize, self.length))
+        return list(range(pid * self.splitSize,
+                min((pid+1) * self.splitSize, self.length)))
 
 class CartesianDependency(NarrowDependency):
     def __init__(self, rdd, first, numSplitsInRdd2):
@@ -37,7 +37,7 @@ class CartesianDependency(NarrowDependency):
 
     def getParents(self, pid):
         if self.first:
-            return [pid / self.numSplitsInRdd2]
+            return [pid // self.numSplitsInRdd2]
         else:
             return [pid % self.numSplitsInRdd2]
 

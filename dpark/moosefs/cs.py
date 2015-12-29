@@ -1,10 +1,10 @@
 import os
 import socket
 import logging
-import commands
+import subprocess
 
-from consts import CHUNKSIZE, CUTOCS_READ, CSTOCU_READ_DATA, CSTOCU_READ_STATUS
-from utils import uint64, pack, unpack
+from .consts import CHUNKSIZE, CUTOCS_READ, CSTOCU_READ_DATA, CSTOCU_READ_STATUS
+from .utils import uint64, pack, unpack
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ mfsdirs = []
 def _scan():
     cmd = """ps -eo cmd| grep mfschunkserver | grep -v grep |
     head -1 | cut -d ' ' -f1 | xargs dirname | sed 's#sbin##g'"""
-    mfs_prefix = commands.getoutput(cmd)
+    mfs_prefix = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
     mfs_cfg = '%s/etc/mfshdd.cfg' % mfs_prefix
     mfs_cfg_list = (mfs_cfg, '/etc/mfs/mfshdd.cfg',
     '/etc/mfshdd.cfg', '/usr/local/etc/mfshdd.cfg')
@@ -144,9 +144,9 @@ def read_chunk(host, port, chunkid, version, size, offset=0):
 
 def test():
     d = list(read_chunk('192.168.11.3', 9422, 6544760, 1, 6, 0))
-    print len(d), sum(len(s) for s in d)
+    print (len(d), sum(len(s) for s in d))
     d = list(read_chunk('192.168.11.3', 9422, 6544936, 1, 46039893, 0))
-    print len(d), sum(len(s) for s in d)
+    print (len(d), sum(len(s) for s in d))
 
 if __name__ == '__main__':
     test()

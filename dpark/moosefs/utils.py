@@ -1,6 +1,6 @@
 import struct
 
-from consts import *
+from .consts import *
 
 def uint8(n):
     return struct.pack("B", n)

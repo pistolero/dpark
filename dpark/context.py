@@ -40,7 +40,7 @@ def setup_conf(options):
         options.mem = memory_str_to_mb(options.mem)
 
     conf.__dict__.update(os.environ)
-    import moosefs
+    from . import moosefs
     moosefs.MFS_PREFIX = conf.MOOSEFS_MOUNT_POINTS
     moosefs.master.ENABLE_DCACHE = conf.MOOSEFS_DIR_CACHE
 
@@ -130,7 +130,7 @@ class DparkContext(object):
             paths = []
             for root,dirs,names in walk(path, followlinks=followLink):
                 if maxdepth > 0:
-                    depth = len(filter(None, root[len(path):].split('/'))) + 1
+                    depth = len([_f for _f in root[len(path):].split('/') if _f]) + 1
                     if depth > maxdepth:
                         break
                 for n in sorted(names):
@@ -208,9 +208,9 @@ class DparkContext(object):
 
         # choose only latest version
         if only_latest:
-            rdd = rdd.reduceByKey(lambda v1,v2: v1[2] > v2[2] and v1 or v2, int(ceil(len(rdd) / 4)))
+            rdd = rdd.reduceByKey(lambda v1, v2: v1[2] > v2[2] and v1 or v2, int(ceil(len(rdd) // 4)))
         if not raw:
-            rdd = rdd.mapValue(lambda (v,ver,t): (restore_value(*v), ver, t))
+            rdd = rdd.mapValue(lambda v_ver_t: (restore_value(*v_ver_t[0]), v_ver_t[1], v_ver_t[2]))
         return rdd
 
     def union(self, rdds):
@@ -258,7 +258,7 @@ class DparkContext(object):
         self.start()
 
         if partitions is None:
-            partitions = range(len(rdd))
+            partitions = list(range(len(rdd)))
         try:
             gc.disable()
             for it in self.scheduler.runJob(rdd, func, partitions, allowLocal):

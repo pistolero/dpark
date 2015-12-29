@@ -1,6 +1,6 @@
 import sys, os.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import cPickle
+from six.moves import cPickle
 import unittest
 import pprint
 import random
@@ -23,12 +23,12 @@ class TestRDD(unittest.TestCase):
     def test_parallel_collection(self):
         slices = ParallelCollection.slice(xrange(5), 3)
         self.assertEqual(len(slices), 3)
-        self.assertEqual(list(slices[0]), range(2))
-        self.assertEqual(list(slices[1]), range(2, 4))
-        self.assertEqual(list(slices[2]), range(4, 5))
+        self.assertEqual(list(slices[0]), list(range(2)))
+        self.assertEqual(list(slices[1]), list(range(2, 4)))
+        self.assertEqual(list(slices[2]), list(range(4, 5)))
 
     def test_basic_operation(self):
-        d = range(4)
+        d = list(range(4))
         nums = self.sc.makeRDD(d, 2)
         self.assertEqual(len(nums.splits), 2)
         self.assertEqual(nums.collect(), d)
@@ -37,7 +37,7 @@ class TestRDD(unittest.TestCase):
         self.assertEqual(nums.filter(lambda x:x>1).collect(), [2, 3])
         self.assertEqual(nums.flatMap(lambda x:range(x)).collect(), [0, 0,1, 0,1,2])
         self.assertEqual(nums.union(nums).collect(), d + d)
-        self.assertEqual(nums.cartesian(nums).map(lambda (x,y):x*y).reduce(lambda x,y:x+y), 36)
+        self.assertEqual(nums.cartesian(nums).map(lambda x_y:x_y[0]*x_y[1]).reduce(lambda x,y:x+y), 36)
         self.assertEqual(nums.glom().map(lambda x:list(x)).collect(),[[0,1],[2,3]])
         self.assertEqual(nums.mapPartitions(lambda x:[sum(x)]).collect(),[1, 5])
         self.assertEqual(nums.map(lambda x:str(x)+"/").reduce(lambda x,y:x+y),
@@ -46,9 +46,9 @@ class TestRDD(unittest.TestCase):
         self.assertEqual(nums.sample(0.5, True).count(), 2)
 
         self.assertEqual(len(nums[:1]), 1)
-        self.assertEqual(nums[:1].collect(), range(2))
+        self.assertEqual(nums[:1].collect(), list(range(2)))
         self.assertEqual(len(nums.mergeSplit(2)), 1)
-        self.assertEqual(nums.mergeSplit(2).collect(), range(4))
+        self.assertEqual(nums.mergeSplit(2).collect(), list(range(4)))
         self.assertEqual(nums.zipWith(nums).collectAsMap(), dict(zip(d,d)))
 
     def test_ignore_bad_record(self):
@@ -56,19 +56,19 @@ class TestRDD(unittest.TestCase):
         self.sc.options.err = 0.02
         nums = self.sc.makeRDD(d, 2)
         self.assertEqual(nums.filter(lambda x:1.0/x).count(), 99)
-        self.assertEqual(nums.map(lambda x:1/x).count(), 99)
-        self.assertEqual(nums.flatMap(lambda x:[1/x]).count(), 99)
-        self.assertEqual(nums.reduce(lambda x,y:x+100/y), 431)
+        self.assertEqual(nums.map(lambda x:1//x).count(), 99)
+        self.assertEqual(nums.flatMap(lambda x:[1//x]).count(), 99)
+        self.assertEqual(nums.reduce(lambda x,y:x+100//y), 431)
 
     def test_pair_operation(self):
-        d = zip([1,2,3,3], range(4,8))
+        d = list(zip([1,2,3,3], range(4,8)))
         nums = self.sc.makeRDD(d, 2)
         self.assertEqual(nums.reduceByKey(lambda x,y:x+y).collectAsMap(), {1:4, 2:5, 3:13})
         self.assertEqual(nums.reduceByKeyToDriver(lambda x,y:x+y), {1:4, 2:5, 3:13})
         self.assertEqual(nums.groupByKey().collectAsMap(), {1:[4], 2:[5], 3:[6,7]})
 
         # join
-        nums2 = self.sc.makeRDD(zip([2,3,4], [1,2,3]), 2)
+        nums2 = self.sc.makeRDD(list(zip([2,3,4], [1,2,3])), 2)
         self.assertEqual(nums.join(nums2).collect(),
                 [(2, (5, 1)), (3, (6, 2)), (3, (7, 2))])
         self.assertEqual(sorted(nums.leftOuterJoin(nums2).collect()),
@@ -90,7 +90,7 @@ class TestRDD(unittest.TestCase):
         # group with
         self.assertEqual(sorted(nums.groupWith(nums2).collect()),
                 [(1, ([4],[])), (2, ([5],[1])), (3,([6,7],[2])), (4,([],[3]))])
-        nums3 = self.sc.makeRDD(zip([4,5,1], [1,2,3]), 1).groupByKey(2).flatMapValue(lambda x:x)
+        nums3 = self.sc.makeRDD(list(zip([4,5,1], [1,2,3])), 1).groupByKey(2).flatMapValue(lambda x:x)
         self.assertEqual(sorted(nums.groupWith([nums2, nums3]).collect()),
                 [(1, ([4],[],[3])), (2, ([5],[1],[])), (3,([6,7],[2],[])),
                 (4,([],[3],[1])), (5,([],[],[2]))])
@@ -140,25 +140,25 @@ class TestRDD(unittest.TestCase):
 
         acc = self.sc.accumulator([], listAcc)
         nums.map(lambda x: acc.add([x])).count()
-        self.assertEqual(list(sorted(acc.value)), range(4))
+        self.assertEqual(list(sorted(acc.value)), list(range(4)))
 
     def test_sort(self):
-        d = range(100)
-        self.assertEqual(self.sc.makeRDD(d, 10).collect(), range(100))
+        d = list(range(100))
+        self.assertEqual(self.sc.makeRDD(d, 10).collect(), list(range(100)))
         random.shuffle(d)
         rdd = self.sc.makeRDD(d, 10)
-        self.assertEqual(rdd.sort(numSplits=10).collect(), range(100))
+        self.assertEqual(rdd.sort(numSplits=10).collect(), list(range(100)))
         self.assertEqual(rdd.sort(reverse=True, numSplits=5).collect(), list(reversed(range(100))))
-        self.assertEqual(rdd.sort(key=lambda x:-x, reverse=True, numSplits=4).collect(), range(100))
+        self.assertEqual(rdd.sort(key=lambda x:-x, reverse=True, numSplits=4).collect(), list(range(100)))
 
-        self.assertEqual(rdd.top(), range(90, 100)[::-1])
-        self.assertEqual(rdd.top(15, lambda x:-x), range(0, 15))
+        self.assertEqual(rdd.top(), list(range(90, 100)[::-1]))
+        self.assertEqual(rdd.top(15, lambda x:-x), list(range(0, 15)))
 
         for i in range(10):
             for j in range(i+1):
                 d.append(i)
         rdd = self.sc.makeRDD(d, 10)
-        self.assertEqual(rdd.hot(), zip(range(9, -1, -1), range(11, 1, -1)))
+        self.assertEqual(rdd.hot(), list(zip(range(9, -1, -1), range(11, 1, -1))))
 
     def test_empty_rdd(self):
         rdd = self.sc.union([])
@@ -209,7 +209,7 @@ class TestRDD(unittest.TestCase):
 
     def test_table_file(self):
         N = 100000
-        d = self.sc.makeRDD(zip(range(N), range(N)), 1)
+        d = self.sc.makeRDD(list(zip(range(N), range(N))), 1)
         self.assertEqual(d.saveAsTableFile('/tmp/tout'), ['/tmp/tout/0000.tab',])
         rd = self.sc.tableFile('/tmp/tout', splitSize=64<<10)
         self.assertEqual(rd.count(), N)
@@ -222,7 +222,7 @@ class TestRDD(unittest.TestCase):
 
     def test_batch(self):
         from math import ceil
-        d = range(1234)
+        d = list(range(1234))
         rdd = self.sc.makeRDD(d, 10).batch(100)
         self.assertEqual(rdd.flatMap(lambda x:x).collect(), d)
         self.assertEqual(rdd.filter(lambda x: len(x)<=2 or len(x) >100).collect(), [])
@@ -239,27 +239,27 @@ class TestRDD(unittest.TestCase):
         d = d[start:l-1]
         rdd = self.sc.partialTextFile(p, start, l, l)
         self.assertEqual('\n'.join(rdd.collect()), d)
-        rdd = self.sc.partialTextFile(p, start, l, (l-start)/5)
+        rdd = self.sc.partialTextFile(p, start, l, (l-start)//5)
         self.assertEqual('\n'.join(rdd.collect()), d)
 
     def test_beansdb(self):
         N = 100
         l = range(N)
-        d = zip(map(str, l), l)
+        d = list(zip(map(str, l), l))
         rdd = self.sc.makeRDD(d, 10)
         self.assertEqual(rdd.saveAsBeansdb('/tmp/beansdb'),
                        ['/tmp/beansdb/%03d.data' % i for i in range(10)])
         rdd = self.sc.beansdb('/tmp/beansdb', depth=0)
         self.assertEqual(len(rdd), 10)
         self.assertEqual(rdd.count(), N)
-        self.assertEqual(sorted(rdd.map(lambda (k,v):(k,v[0])).collect()), sorted(d))
+        self.assertEqual(sorted(rdd.map(lambda k_v:(k_v[0],k_v[1][0])).collect()), sorted(d))
         s = rdd.map(lambda x:x[1][0]).reduce(lambda x,y:x+y)
         self.assertEqual(s, sum(l))
 
         rdd = self.sc.beansdb('/tmp/beansdb', depth=0, fullscan=True)
         self.assertEqual(len(rdd), 10)
         self.assertEqual(rdd.count(), N)
-        self.assertEqual(sorted(rdd.map(lambda (k,v):(k,v[0])).collect()), sorted(d))
+        self.assertEqual(sorted(rdd.map(lambda k_v:(k_v[0],k_v[1][0])).collect()), sorted(d))
         s = rdd.map(lambda x:x[1][0]).reduce(lambda x,y:x+y)
         self.assertEqual(s, sum(l))
         shutil.rmtree('/tmp/beansdb')
@@ -282,15 +282,15 @@ class TestRDD(unittest.TestCase):
         N = 100
         p = 10
         l = range(N)
-        d1 = sorted(map(lambda x: (x/p, x), l))
-        d2 = sorted(map(lambda x: ((x/p, x%p), x), l))
+        d1 = sorted(map(lambda x: (x//p, x), l))
+        d2 = sorted(map(lambda x: ((x//p, x%p), x), l))
         rdd = self.sc.makeRDD(l, p)
         self.assertEqual(sorted(rdd.enumeratePartition().collect()), d1)
         self.assertEqual(sorted(rdd.enumerate().collect()), d2)
 
     def test_tabular(self):
-        d = range(10000)
-        d = zip(d, map(str, d), map(float, d))
+        d = list(range(10000))
+        d = list(zip(d, map(str, d), map(float, d)))
         path = '/tmp/tabular-%s' % os.getpid()
         try:
             self.sc.makeRDD(d).saveAsTabular(path, 'f_int, f_str, f_float', indices=['f_str', 'f_float'])
@@ -316,7 +316,7 @@ class TestRDD(unittest.TestCase):
                 pass
 
     def test_iter(self):
-        d = range(1000)
+        d = list(range(1000))
         rdd = self.sc.makeRDD(d, 10)
         assert d == [i for i in rdd]
 

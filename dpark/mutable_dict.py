@@ -1,6 +1,7 @@
 import uuid
 import os
-import cPickle
+import six
+from six.moves import cPickle
 import urllib
 import struct
 import glob
@@ -66,7 +67,7 @@ class MutableDict(object):
         _key = self._get_key(key)
         values = self.data.get((_key, key))
         if values is None:
-            for k, v in self._fetch_missing(_key).iteritems():
+            for k, v in six.iteritems(self._fetch_missing(_key)):
                 self.data.put((_key, k), v)
 
             values = self.data.get((_key, key))
@@ -88,7 +89,7 @@ class MutableDict(object):
         uri = env.get('SERVER_URI')
         server_uri = '%s/%s' % (uri, os.path.basename(path))
 
-        for k,v in self.updated.items():
+        for k,v in list(self.updated.items()):
             key = self._get_key(k)
             if key in updated_keys:
                 updated_keys[key][k] = v
@@ -96,9 +97,9 @@ class MutableDict(object):
                 updated_keys[key] = {k:v}
 
         uid = uuid.uuid4().get_hex()
-        for key, updated in updated_keys.items():
+        for key, updated in list(updated_keys.items()):
             new = self._fetch_missing(key)
-            for k,v in updated.items():
+            for k,v in list(updated.items()):
                 if v is None:
                     new.pop(k)
                 else:
@@ -122,7 +123,7 @@ class MutableDict(object):
                 if int(f.split('_')[-2]) < self.generation -1:
                     try:
                         os.remove(f)
-                    except OSError, e:
+                    except OSError as e:
                         pass
 
         self.updated.clear()
@@ -164,7 +165,7 @@ class MutableDict(object):
                     len(data), length))
 
             data = cPickle.loads(decompress(data[4:]))
-            for k,v in data.items():
+            for k,v in list(data.items()):
                 if k in result:
                     r = result[k]
                     if v[1] == r[1]:
@@ -204,7 +205,7 @@ class MutableDict(object):
             try:
                 os.makedirs(p)
                 os.symlink(p, path)
-            except OSError, e:
+            except OSError as e:
                 pass
 
             return path
@@ -224,11 +225,11 @@ class MutableDict(object):
 
     @classmethod
     def flush(cls):
-        for md in cls._all_mutable_dicts.values():
+        for md in list(cls._all_mutable_dicts.values()):
             md._flush()
 
     @classmethod
     def merge(cls):
-        for md in cls._all_mutable_dicts.values():
+        for md in list(cls._all_mutable_dicts.values()):
             md._merge()
 
