@@ -13,4 +13,3 @@ python-gflags==2.0
 pytz==2015.7
 pyzmq==15.0.0
 six==1.10.0
-wsgiref==0.1.2
