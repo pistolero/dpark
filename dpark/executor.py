@@ -60,7 +60,7 @@ def run_task(task_data):
         task, ntry = cPickle.loads(decompress(task_data))
         Accumulator.clear()
         result = task.run(ntry)
-        accUpdate = list(Accumulator.values())
+        accUpdate = Accumulator.values()
         MutableDict.flush()
 
         if marshalable(result):

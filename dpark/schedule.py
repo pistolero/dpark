@@ -351,7 +351,7 @@ def run_task(task, aid):
     try:
         Accumulator.clear()
         result = task.run(aid)
-        accumUpdates = list(Accumulator.values())
+        accumUpdates = Accumulator.values()
         MutableDict.flush()
         return (task.id, Success(), result, accumUpdates)
     except Exception as e:

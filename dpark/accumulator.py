@@ -76,7 +76,7 @@ class Accumulator:
 
     @classmethod
     def merge(cls, values):
-        for id, value in list(values.items()):
+        for id, value in values.items():
             cls.originals[id].add(value)
 
 ReadBytes = Accumulator()
